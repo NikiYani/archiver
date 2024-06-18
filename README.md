@@ -4,3 +4,4 @@ Abstract: Writing a small utility based on the tutorial to familiarize yourself 
 
 ### File compression result
 
+![Alt text](img/result.png)
