@@ -1,64 +1,33 @@
 package vlc
 
 import (
-	"fmt"
-	"strconv"
 	"strings"
 	"unicode"
-	"unicode/utf8"
 )
 
-type encodingTable map[rune]string
-
-type BinaryChunk string
-
-type BinaryChunks []BinaryChunk
-
-type HexChunk string
-
-type HexChunks []HexChunk
-
-const chunkSize = 8
-
-func Encode(str string) string {
-	fmt.Println("base data: " + str)
-
+func Encode(str string) []byte {
 	str = prepareText(str)
-	chunks := splitByChunks(encodeBin(str), chunkSize)
 
-	return chunks.ToHex().ToString()
+	chunks := splitByChunks(encodeBin(str), chunksSize)
+
+	return chunks.Bytes()
 }
 
-// prepareText prepares text to be fit for encode:
-// changes upper case letters to: ! + lower case letter
-//
-//	i.e.: "My name is Ted" -> "!my name is !ted"
-func prepareText(str string) string {
-	var buf strings.Builder
+func Decode(encodedData []byte) string {
+	bString := NewBinChunks(encodedData).Join()
 
-	for _, ch := range str {
-		if unicode.IsUpper(ch) {
-			buf.WriteRune('!')
-			buf.WriteRune(unicode.ToLower(ch))
-		} else {
-			buf.WriteRune(ch)
-		}
-	}
+	dTree := getEncodingTable().DecodingTree()
 
-	return buf.String()
+	return exportText(dTree.Decode(bString))
 }
 
-// encodeBin encodes text to binary codes string without spaces.
-//
-//	i.e.: "!ted" -> "001000100110100101"
+// encodeBin encodes str into binary codes string without spaces.
 func encodeBin(str string) string {
 	var buf strings.Builder
 
 	for _, ch := range str {
 		buf.WriteString(bin(ch))
 	}
-
-	fmt.Println("encodeBin: " + buf.String())
 
 	return buf.String()
 }
@@ -67,7 +36,6 @@ func bin(ch rune) string {
 	table := getEncodingTable()
 
 	res, ok := table[ch]
-
 	if !ok {
 		panic("unknown character: " + string(ch))
 	}
@@ -108,89 +76,49 @@ func getEncodingTable() encodingTable {
 	}
 }
 
-// splitByChunks splits string into chunks of size chunkSize
+// prepareText prepares text to be fit for encode:
+// changes upper case letters to: ! + lower case letter
 //
-//	i.e.: '100101011001010110010101' -> '10010101 10010101 10010101'
-func splitByChunks(bStr string, chunkSize int) BinaryChunks {
-
-	strLen := utf8.RuneCountInString(bStr)
-	chunksCount := strLen / chunkSize
-
-	if strLen/chunkSize != 0 {
-		chunksCount++
-	}
-
-	res := make(BinaryChunks, 0, chunksCount)
-
+//	i.e.: My name is Ted -> !my name is !ted
+func prepareText(str string) string {
 	var buf strings.Builder
 
-	for i, ch := range bStr {
-		buf.WriteString(string(ch))
-
-		if (i+1)%chunkSize == 0 {
-			res = append(res, BinaryChunk(buf.String()))
-			buf.Reset()
+	for _, ch := range str {
+		if unicode.IsUpper(ch) {
+			buf.WriteRune('!')
+			buf.WriteRune(unicode.ToLower(ch))
+		} else {
+			buf.WriteRune(ch)
 		}
 	}
 
-	if buf.Len() != 0 {
-		lastChunk := buf.String()
-		lastChunk += strings.Repeat("0", chunkSize-len(lastChunk))
-
-		res = append(res, BinaryChunk(lastChunk))
-	}
-
-	fmt.Println("splitByChunks: " + res.ToHex().ToString())
-
-	return res
+	return buf.String()
 }
 
-func (bcs BinaryChunks) ToHex() HexChunks {
-	res := make(HexChunks, 0, len(bcs))
-
-	for _, chunk := range bcs {
-		hexChunk := chunk.ToHex()
-
-		res = append(res, hexChunk)
-	}
-
-	return res
-}
-
-func (bc BinaryChunk) ToHex() HexChunk {
-	num, err := strconv.ParseUint(string(bc), 2, chunkSize)
-
-	if err != nil {
-		panic("Cant parse binary chunk: " + err.Error())
-	}
-
-	res := strings.ToUpper(fmt.Sprintf("%x", num)) // convert 0h 12 4a -> 0H 12 4A
-
-	if len(res) == 1 { // if one character - add 0 to the beginning
-		res = "0" + res
-	}
-
-	return HexChunk(res)
-}
-
-func (hcs HexChunks) ToString() string {
-	// 30 45 1C
-	const sep = " "
-
-	switch len((hcs)) {
-	case 0:
-		return ""
-	case 1:
-		return string(hcs[0])
-	}
-
+// exportText is opposite to prepareText, it prepares decoded text to export:
+// it changes: ! + <lower case letter> -> to upper case letter.
+//
+//	i.e.: !my name is !ted -> My name is Ted.
+func exportText(str string) string {
 	var buf strings.Builder
 
-	buf.WriteString(string(hcs[0]))
+	var isCapital bool
 
-	for _, hc := range hcs[1:] {
-		buf.WriteString(sep)
-		buf.WriteString(string(hc))
+	for _, ch := range str {
+		if isCapital {
+			buf.WriteRune(unicode.ToUpper(ch))
+			isCapital = false
+
+			continue
+		}
+
+		if ch == '!' {
+			isCapital = true
+
+			continue
+		} else {
+			buf.WriteRune(ch)
+		}
 	}
 
 	return buf.String()
